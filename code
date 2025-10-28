@@ -1,0 +1,2652 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dart:convert'; // Đã thêm: Để xử lý JSON
+
+void main() {
+  runApp(MyApp());
+}
+
+// --- Màu sắc Theme (MEDCARE) ---
+const Color mcPrimaryColor = Color(0xFF1E40AF); // Blue 800 (Xanh Dương Đậm)
+const Color mcAccentColor = Color(0xFF059669); // Green 600 (Xanh Lá Cây)
+const Color mcBackgroundColor = Color(0xFFF7F8FA);
+
+// =========================================================================
+//                             1. ENUM VÀ MODELS DỮ LIỆU (ĐÃ CẬP NHẬT toJson())
+// =========================================================================
+
+enum MedicineCategory {
+  thuocGiamDau, thucPhamChucNang, chamSocCaNhan, thietBiYTe, duocMyPham, chamSocMat,
+}
+
+String getCategoryDisplayName(MedicineCategory category) {
+  switch (category) {
+    case MedicineCategory.thuocGiamDau: return 'Thuốc Giảm Đau & Hạ Sốt';
+    case MedicineCategory.thucPhamChucNang: return 'Thực Phẩm Chức Năng';
+    case MedicineCategory.chamSocCaNhan: return 'Chăm Sóc Cá Nhân';
+    case MedicineCategory.thietBiYTe: return 'Thiết Bị Y Tế';
+    case MedicineCategory.duocMyPham: return 'Dược Mỹ Phẩm';
+    case MedicineCategory.chamSocMat: return 'Chăm Sóc Mắt';
+  }
+}
+
+class Medicine {
+  final String id;
+  final String name;
+  final double price;
+  final String dosage;
+  final String activeIngredient;
+  final String origin;
+  final String generalDescription;
+  final String imageUrl;
+  final MedicineCategory category;
+
+  Medicine({
+    required this.id, required this.name, required this.price, required this.dosage,
+    required this.activeIngredient, required this.origin, required this.generalDescription,
+    required this.imageUrl, required this.category,
+  });
+}
+
+class CartItem {
+  final String id;
+  final String medicineName;
+  final double unitPrice;
+  int quantity;
+  final String imageUrl;
+
+  CartItem({
+    required this.id, required this.medicineName, required this.unitPrice,
+    required this.quantity, required this.imageUrl,
+  });
+
+  double get totalPrice => unitPrice * quantity;
+}
+
+class Account {
+  final String userId;
+  String email;
+  String password;
+  Account({required this.userId, required this.email, required this.password});
+}
+
+class UserProfile {
+  String fullName;
+  String phoneNumber;
+  String email;
+  String gender;
+  String dob;
+  String userId;
+
+  UserProfile({
+    required this.fullName, required this.phoneNumber, required this.email,
+    required this.gender, required this.dob, required this.userId,
+  });
+
+  UserProfile copyWith({String? fullName, String? phoneNumber, String? email, String? gender, String? dob}) {
+    return UserProfile(
+      userId: userId,
+      fullName: fullName ?? this.fullName,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
+      email: email ?? this.email,
+      gender: gender ?? this.gender,
+      dob: dob ?? this.dob,
+    );
+  }
+  
+  // MỚI: Phương thức chuyển đổi thành Map (chuẩn bị cho JSON)
+  Map<String, dynamic> toJson() {
+    return {
+      'userId': userId,
+      'fullName': fullName,
+      'phoneNumber': phoneNumber,
+      'email': email,
+      'gender': gender,
+      'dob': dob,
+    };
+  }
+}
+
+class Address {
+  final String id;
+  String name;
+  String phone;
+  String street;
+  String district;
+  String city;
+  bool isDefault;
+
+  Address({
+    required this.id, required this.name, required this.phone, required this.street,
+    required this.district, required this.city, this.isDefault = false,
+  });
+
+  // MỚI: Phương thức chuyển đổi thành Map (chuẩn bị cho JSON)
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'phone': phone,
+      'street': street,
+      'district': district,
+      'city': city,
+      'isDefault': isDefault,
+    };
+  }
+}
+
+class PaymentCard {
+  final String id;
+  String cardNumber;
+  String cardHolder;
+  String expiryDate;
+  String bankName;
+  bool isDefault;
+
+  PaymentCard({
+    required this.id, required this.cardNumber, required this.cardHolder,
+    required this.expiryDate, required this.bankName, this.isDefault = false,
+  });
+
+  // MỚI: Phương thức chuyển đổi thành Map (chuẩn bị cho JSON)
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'cardNumber': cardNumber,
+      'cardHolder': cardHolder,
+      'expiryDate': expiryDate,
+      'bankName': bankName,
+      'isDefault': isDefault,
+    };
+  }
+}
+
+class OrderItem {
+  final String medicineName;
+  final double unitPrice;
+  final int quantity;
+  OrderItem({required this.medicineName, required this.unitPrice, required this.quantity});
+  double get totalPrice => unitPrice * quantity;
+
+  // MỚI: Phương thức chuyển đổi thành Map (chuẩn bị cho JSON)
+  Map<String, dynamic> toJson() {
+    return {
+      'medicineName': medicineName,
+      'unitPrice': unitPrice,
+      'quantity': quantity,
+    };
+  }
+}
+
+class Order {
+  final String orderId;
+  final DateTime orderDate;
+  final double totalAmount;
+  final List<OrderItem> items;
+  String status;
+  final Address deliveryAddress;
+  final String paymentMethod;
+
+  Order({
+    required this.orderId, required this.orderDate, required this.totalAmount,
+    required this.items, required this.deliveryAddress, required this.paymentMethod,
+    this.status = 'Đang xử lý',
+  });
+
+  // MỚI: Phương thức chuyển đổi thành Map (chuẩn bị cho JSON)
+  Map<String, dynamic> toJson() {
+    return {
+      'orderId': orderId,
+      'orderDate': orderDate.toIso8601String(), // Chuyển DateTime thành chuỗi ISO
+      'totalAmount': totalAmount,
+      // Dùng toJson() của OrderItem và Address để nhúng
+      'items': items.map((item) => item.toJson()).toList(), 
+      'deliveryAddress': deliveryAddress.toJson(),
+      'paymentMethod': paymentMethod,
+      'status': status,
+    };
+  }
+}
+
+class ChatMessage {
+  final String text;
+  final bool isUser; // true nếu là tin nhắn của người dùng
+
+  ChatMessage({required this.text, required this.isUser});
+}
+
+// =========================================================================
+//                             2. DỮ LIỆU GIẢ LẬP (MOCK DATA)
+// =========================================================================
+
+final List<String> _productImageUrls = [
+  'assets/images/paracetal.png', 'assets/images/vitamin_c.png', 'assets/images/sunscreen.png',
+  'assets/images/blood_pressure_monitor.png', 'assets/images/condom.png', 'assets/images/cough_syrup.png',
+  'assets/images/anti_dandruff_shampoo.png', 'assets/images/omega_3.png', 'assets/images/saline.png',
+  'assets/images/serum_b5.png', 'assets/images/bandage.png', 'assets/images/cold_medicine.png',
+];
+
+final List<Medicine> mockMedicineList = [
+  Medicine(id: 'M001', name: 'Thuốc Giảm Đau Hạ Sốt Paracetal Forte 500mg', price: 65000, dosage: '500mg/viên', activeIngredient: 'Paracetamol', origin: 'Việt Nam', generalDescription: 'Giảm đau, hạ sốt nhanh chóng, hiệu quả cao.', imageUrl: _productImageUrls[0], category: MedicineCategory.thuocGiamDau),
+  Medicine(id: 'M002', name: 'Siro Ho Trẻ Em Vị Dâu 100ml', price: 120000, dosage: '100ml/chai', activeIngredient: 'Dextromethorphan', origin: 'Úc', generalDescription: 'Giúp giảm ho, long đờm cho trẻ em, hương vị dễ uống.', imageUrl: _productImageUrls[5], category: MedicineCategory.thuocGiamDau),
+  Medicine(id: 'M003', name: 'Vitamin C Tăng Cường Miễn Dịch 1000mg', price: 80000, dosage: '1000mg/viên', activeIngredient: 'Ascorbic Acid', origin: 'Mỹ', generalDescription: 'Bổ sung Vitamin C, tăng cường hệ miễn dịch, chống oxy hóa.', imageUrl: _productImageUrls[1], category: MedicineCategory.thucPhamChucNang),
+  Medicine(id: 'M004', name: 'Dầu Cá Omega 3 Hỗ Trợ Tim Mạch', price: 299000, dosage: '1000mg/viên', activeIngredient: 'EPA, DHA', origin: 'Na Uy', generalDescription: 'Hỗ trợ sức khỏe tim mạch, thị lực và chức năng não bộ.', imageUrl: _productImageUrls[7], category: MedicineCategory.thucPhamChucNang),
+  Medicine(id: 'M005', name: 'Kem Chống Nắng Phổ Rộng SPF50+', price: 350000, dosage: '50ml/tuýp', activeIngredient: 'Zinc Oxide, Titanium Dioxide', origin: 'Pháp', generalDescription: 'Bảo vệ da tối ưu khỏi tia UVA/UVB, không gây bết dính.', imageUrl: _productImageUrls[2], category: MedicineCategory.duocMyPham),
+  Medicine(id: 'M006', name: 'Serum Phục Hồi Da B5', price: 420000, dosage: '30ml/chai', activeIngredient: 'Vitamin B5, Hyaluronic Acid', origin: 'Hàn Quốc', generalDescription: 'Phục hồi da tổn thương, cấp ẩm sâu, giảm kích ứng.', imageUrl: _productImageUrls[9], category: MedicineCategory.duocMyPham),
+  Medicine(id: 'M007', name: 'Máy Đo Huyết Áp Điện Tử Tự Động', price: 850000, dosage: '1 máy', activeIngredient: 'Công nghệ Intellisense', origin: 'Nhật Bản', generalDescription: 'Đo huyết áp và nhịp tim chính xác tại nhà, dễ sử dụng.', imageUrl: _productImageUrls[3], category: MedicineCategory.thietBiYTe),
+  Medicine(id: 'M008', name: 'Bộ Băng Gạc Vô Trùng Cá Nhân', price: 45000, dosage: '1 hộp/10 miếng', activeIngredient: 'Vải cotton, keo y tế', origin: 'Việt Nam', generalDescription: 'Dùng băng bó vết thương nhỏ, tiện lợi, an toàn.', imageUrl: _productImageUrls[10], category: MedicineCategory.thietBiYTe),
+  Medicine(id: 'M009', name: 'Nước Muối Sinh Lý Natri Clorid 0.9%', price: 15000, dosage: '500ml/chai', activeIngredient: 'Natri Clorid', origin: 'Việt Nam', generalDescription: 'Rửa mắt, mũi, súc miệng hàng ngày, an toàn cho trẻ sơ sinh.', imageUrl: _productImageUrls[8], category: MedicineCategory.chamSocMat),
+  Medicine(id: 'M010', name: 'Dung Dịch Rửa Vệ Sinh Phụ Nữ Trầu Không', price: 90000, dosage: '150ml/chai', activeIngredient: 'Chiết xuất Trầu Không', origin: 'Việt Nam', generalDescription: 'Giúp làm sạch nhẹ nhàng, khử mùi và cân bằng pH vùng kín.', imageUrl: _productImageUrls[4], category: MedicineCategory.chamSocCaNhan),
+  Medicine(id: 'M011', name: 'Thuốc Cảm Cúm Tổng Hợp DayQuil', price: 155000, dosage: '1 vỉ/10 viên', activeIngredient: 'Acetaminophen, Phenylephrine', origin: 'Mỹ', generalDescription: 'Giảm nhanh các triệu chứng cảm cúm: sốt, sổ mũi, nhức đầu.', imageUrl: _productImageUrls[11], category: MedicineCategory.thuocGiamDau),
+  Medicine(id: 'M012', name: 'Viên Uống Hỗ Trợ Giấc Ngủ Melatonin', price: 320000, dosage: '5mg/viên', activeIngredient: 'Melatonin', origin: 'Đức', generalDescription: 'Hỗ trợ điều trị mất ngủ, giúp ngủ sâu và ngon hơn.', imageUrl: _productImageUrls[6], category: MedicineCategory.thucPhamChucNang),
+];
+
+// Danh sách Tài khoản giả lập (Tài khoản mặc định: user@medcare.com/password123)
+List<Account> mockAccounts = [
+  Account(userId: 'U100001', email: 'user@medcare.com', password: 'password123'),
+];
+
+// Trạng thái người dùng hiện tại (null nếu chưa đăng nhập) - Sẽ được quản lý bởi AuthWrapper
+UserProfile? _currentUserProfile;
+
+List<CartItem> mockCartItems = [];
+List<Order> mockOrderHistory = [];
+List<String> mockFavoriteIds = [];
+List<Address> mockAddresses = [];
+List<PaymentCard> mockPaymentCards = [];
+
+
+// Hàm khởi tạo dữ liệu mock cho người dùng sau khi đăng nhập
+void _initializeMockUserData(UserProfile user) {
+  mockCartItems = [
+    CartItem(id: 'M001', medicineName: mockMedicineList[0].name, unitPrice: mockMedicineList[0].price, quantity: 2, imageUrl: mockMedicineList[0].imageUrl),
+    CartItem(id: 'M003', medicineName: mockMedicineList[2].name, unitPrice: mockMedicineList[2].price, quantity: 1, imageUrl: mockMedicineList[2].imageUrl),
+  ];
+  mockAddresses = [
+    Address(id: 'A01', name: user.fullName, phone: user.phoneNumber, street: '123 Đường 3/2', district: 'Quận 10', city: 'TP.HCM', isDefault: true),
+    Address(id: 'A02', name: user.fullName, phone: '0987654321', street: '456 Hoàng Văn Thụ', district: 'Quận Tân Bình', city: 'TP.HCM'),
+  ];
+  mockPaymentCards = [
+    PaymentCard(id: 'P01', cardNumber: '**** **** **** 1234', cardHolder: user.fullName.toUpperCase(), expiryDate: '12/26', bankName: 'Vietcombank', isDefault: true),
+  ];
+  mockOrderHistory = [
+    Order(
+      orderId: 'ORD001',
+      orderDate: DateTime(2025, 10, 20, 10, 30),
+      totalAmount: 185000.0,
+      items: [
+        OrderItem(medicineName: mockMedicineList[0].name, unitPrice: mockMedicineList[0].price, quantity: 1),
+        OrderItem(medicineName: mockMedicineList[2].name, unitPrice: mockMedicineList[2].price, quantity: 1),
+      ],
+      deliveryAddress: mockAddresses[0],
+      paymentMethod: 'Thẻ tín dụng (1234)',
+      status: 'Đã giao',
+    ),
+  ];
+  mockFavoriteIds = ['M004', 'M007'];
+}
+
+// =========================================================================
+//                             3. HÀM HELPER CHUNG
+// =========================================================================
+
+void _showSnackBar(BuildContext context, String message, {Color color = mcAccentColor}) {
+  if (ScaffoldMessenger.of(context).mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: color,
+          duration: Duration(seconds: 2),
+        ),
+      );
+  }
+}
+
+String _formatCurrency(double amount) {
+  return '${amount.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')} đ';
+}
+
+String _formatDate(DateTime date) {
+  return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+}
+
+// =========================================================================
+//                             4. WIDGET CHÍNH VÀ AUTHENTICATION
+// =========================================================================
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'MEDCARE',
+      theme: ThemeData(
+        primarySwatch: MaterialColor(mcPrimaryColor.value, <int, Color>{
+          50: Color(0xFFE8EAF6), 100: Color(0xFFC5CAE9), 200: Color(0xFF9FA8DA),
+          300: Color(0xFF7986CB), 400: Color(0xFF5C6BC0), 500: mcPrimaryColor,
+          600: Color(0xFF3949AB), 700: Color(0xFF303F9F), 800: Color(0xFF283593),
+          900: Color(0xFF1A237E),
+        }),
+        primaryColor: mcPrimaryColor,
+        colorScheme: ColorScheme.light(
+          primary: mcPrimaryColor,
+          secondary: mcAccentColor,
+          error: Colors.red.shade700,
+          background: mcBackgroundColor,
+        ),
+        fontFamily: 'Roboto',
+        appBarTheme: AppBarTheme(
+          backgroundColor: mcPrimaryColor,
+          foregroundColor: Colors.white,
+          centerTitle: true,
+          elevation: 0,
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: mcAccentColor,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+          ),
+        ),
+        scaffoldBackgroundColor: mcBackgroundColor,
+        inputDecorationTheme: InputDecorationTheme(
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: mcAccentColor, width: 2),
+            ),
+            prefixIconColor: MaterialStateColor.resolveWith((states) => states.contains(MaterialState.focused) ? mcAccentColor : mcPrimaryColor)
+        ),
+      ),
+      home: AuthWrapper(),
+      routes: {
+        '/cart': (context) => CartScreen(isStandalone: true),
+        '/checkout': (context) => CheckoutScreen(),
+        '/favorites': (context) => FavoriteScreen(),
+        '/edit-profile': (context) => EditProfileScreen(
+          onProfileUpdated: (updatedUser) {
+            final authWrapperState = context.findAncestorStateOfType<_AuthWrapperState>();
+            if (authWrapperState != null) {
+              authWrapperState.updateProfile(updatedUser);
+            }
+          },
+        ),
+        '/addresses': (context) => AddressScreen(),
+        '/payments': (context) => PaymentScreen(),
+        '/settings': (context) => PlaceholderScreen(title: 'Cài đặt Chung'),
+        '/order-history': (context) => OrderHistoryScreen(),
+        '/add-edit-address': (context) => AddEditAddressScreen(),
+        '/add-edit-payment': (context) => AddEditPaymentCardScreen(),
+        '/security': (context) => PlaceholderScreen(title: 'Bảo mật Tài khoản'),
+        '/support': (context) => PlaceholderScreen(title: 'Trung tâm Hỗ trợ'),
+      },
+    );
+  }
+}
+
+class AuthWrapper extends StatefulWidget {
+  @override
+  _AuthWrapperState createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  UserProfile? _userProfile;
+
+  void _login(UserProfile user) {
+    setState(() {
+      _userProfile = user;
+      _currentUserProfile = user;
+      _initializeMockUserData(user);
+    });
+    if (mounted) {
+      _showSnackBar(context, 'Đăng nhập thành công! Chào mừng ${_userProfile!.fullName}.', color: mcAccentColor);
+    }
+  }
+
+  void _logout() {
+    setState(() {
+      _userProfile = null;
+      _currentUserProfile = null;
+      mockCartItems.clear(); mockOrderHistory.clear(); mockFavoriteIds.clear();
+      mockAddresses.clear(); mockPaymentCards.clear();
+    });
+    if (mounted) {
+      _showSnackBar(context, 'Đã đăng xuất.', color: Colors.red);
+    }
+  }
+
+  void updateProfile(UserProfile updatedUser) {
+    setState(() {
+      _userProfile = updatedUser;
+      _currentUserProfile = updatedUser;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_userProfile == null) {
+      return AuthScreen(onLoginSuccess: _login);
+    } else {
+      return MainNavigationScreen(
+        key: ValueKey(_userProfile!.userId),
+        userProfile: _userProfile!,
+        onLogout: _logout,
+      );
+    }
+  }
+}
+
+// --- Màn hình Xác thực (AuthScreen) ---
+class AuthScreen extends StatelessWidget {
+  final Function(UserProfile) onLoginSuccess;
+  AuthScreen({required this.onLoginSuccess});
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: mcPrimaryColor,
+        body: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(40.0),
+                child: Column(
+                  children: [
+                    Icon(Icons.local_hospital_outlined, size: 80, color: Colors.white),
+                    const SizedBox(height: 10),
+                    Text('MEDCARE', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
+                    Text('Sức khỏe trong tầm tay', style: TextStyle(fontSize: 14, color: Colors.white70)),
+                  ],
+                ),
+              ),
+              TabBar(
+                tabs: [Tab(text: 'ĐĂNG NHẬP'), Tab(text: 'ĐĂNG KÝ')],
+                labelColor: Colors.white, unselectedLabelColor: Colors.white70,
+                indicatorColor: mcAccentColor, indicatorWeight: 4,
+                labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: mcBackgroundColor,
+                    borderRadius: BorderRadius.only(topLeft: Radius.circular(25), topRight: Radius.circular(25)),
+                  ),
+                  child: TabBarView(
+                    children: [
+                      LoginScreen(onLoginSuccess: onLoginSuccess),
+                      RegisterScreen(onRegisterSuccess: onLoginSuccess),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// --- Màn hình Đăng Nhập (LoginScreen) ---
+class LoginScreen extends StatefulWidget {
+  final Function(UserProfile) onLoginSuccess;
+  LoginScreen({required this.onLoginSuccess});
+
+  @override
+  _LoginScreenState createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  String _email = '';
+  String _password = '';
+  bool _isLoading = false;
+
+  void _attemptLogin() async {
+    if (_formKey.currentState!.validate()) {
+      _formKey.currentState!.save();
+      setState(() { _isLoading = true; });
+      await Future.delayed(Duration(seconds: 1));
+
+      final account = mockAccounts.firstWhere(
+        (acc) => acc.email == _email && acc.password == _password,
+        orElse: () => Account(userId: '', email: '', password: ''),
+      );
+
+      if (mounted) {
+        if (account.userId.isNotEmpty) {
+          final user = UserProfile(
+            userId: account.userId, email: account.email, fullName: 'Người dùng MEDCARE',
+            phoneNumber: '09xxxxxxxxx', gender: 'Không xác định', dob: '01/01/2000',
+          );
+          widget.onLoginSuccess(user);
+        } else {
+          _showSnackBar(context, 'Đăng nhập thất bại: Sai email hoặc mật khẩu.', color: Colors.red);
+          setState(() { _isLoading = false; });
+        }
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(30.0),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Chào mừng trở lại!', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87)),
+            const SizedBox(height: 30),
+            TextFormField(
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(labelText: 'Email (user@medcare.com)', prefixIcon: Icon(Icons.email)),
+              validator: (val) => val!.isEmpty ? 'Vui lòng nhập Email' : null,
+              onSaved: (val) => _email = val!.trim(),
+            ),
+            const SizedBox(height: 20),
+            TextFormField(
+              obscureText: true,
+              decoration: InputDecoration(labelText: 'Mật khẩu (password123)', prefixIcon: Icon(Icons.lock)),
+              validator: (val) => val!.isEmpty ? 'Vui lòng nhập Mật khẩu' : null,
+              onSaved: (val) => _password = val!,
+            ),
+            const SizedBox(height: 30),
+            _isLoading
+                ? Center(child: CircularProgressIndicator(color: mcAccentColor))
+                : ElevatedButton(
+                    onPressed: _attemptLogin,
+                    child: Text('ĐĂNG NHẬP', style: TextStyle(fontSize: 18)),
+                    style: ElevatedButton.styleFrom(backgroundColor: mcAccentColor, minimumSize: Size(double.infinity, 50)),
+                  ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- Màn hình Đăng Ký (RegisterScreen) ---
+class RegisterScreen extends StatefulWidget {
+  final Function(UserProfile) onRegisterSuccess;
+  RegisterScreen({required this.onRegisterSuccess});
+
+  @override
+  _RegisterScreenState createState() => _RegisterScreenState();
+}
+
+class _RegisterScreenState extends State<RegisterScreen> {
+  final _formKey = GlobalKey<FormState>();
+  String _email = '';
+  String _password = '';
+  String _fullName = '';
+  bool _isLoading = false;
+
+  void _attemptRegister() async {
+    if (_formKey.currentState!.validate()) {
+      _formKey.currentState!.save();
+      setState(() { _isLoading = true; });
+      await Future.delayed(Duration(seconds: 1));
+
+      if (mounted) {
+        if (mockAccounts.any((acc) => acc.email == _email)) {
+          _showSnackBar(context, 'Đăng ký thất bại: Email đã được sử dụng.', color: Colors.red);
+          setState(() { _isLoading = false; });
+          return;
+        }
+
+        final newUserId = 'U${DateTime.now().millisecondsSinceEpoch}';
+        final newAccount = Account(userId: newUserId, email: _email, password: _password);
+        mockAccounts.add(newAccount);
+
+        final newUserProfile = UserProfile(
+          userId: newUserId, email: _email, fullName: _fullName,
+          phoneNumber: '09xxxxxxxxx', gender: 'Không xác định', dob: '01/01/2000',
+        );
+
+        _showSnackBar(context, 'Đăng ký thành công! Đang tự động đăng nhập...', color: mcAccentColor);
+        widget.onRegisterSuccess(newUserProfile);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(30.0),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Đăng ký Tài khoản Mới', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87)),
+            const SizedBox(height: 30),
+            TextFormField(
+              keyboardType: TextInputType.text,
+              decoration: InputDecoration(labelText: 'Họ và Tên', prefixIcon: Icon(Icons.person)),
+              validator: (val) => val!.isEmpty ? 'Vui lòng nhập Tên của bạn' : null,
+              onSaved: (val) => _fullName = val!.trim(),
+            ),
+            const SizedBox(height: 20),
+            TextFormField(
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email)),
+              validator: (val) {
+                if (val!.isEmpty) return 'Vui lòng nhập Email';
+                if (!val.contains('@')) return 'Email không hợp lệ';
+                return null;
+              },
+              onSaved: (val) => _email = val!.trim(),
+            ),
+            const SizedBox(height: 20),
+            TextFormField(
+              obscureText: true,
+              decoration: InputDecoration(labelText: 'Mật khẩu (Tối thiểu 6 ký tự)', prefixIcon: Icon(Icons.lock)),
+              validator: (val) => val!.length < 6 ? 'Mật khẩu phải từ 6 ký tự trở lên' : null,
+              onSaved: (val) => _password = val!,
+            ),
+            const SizedBox(height: 30),
+            _isLoading
+                ? Center(child: CircularProgressIndicator(color: mcAccentColor))
+                : ElevatedButton(
+                    onPressed: _attemptRegister,
+                    child: Text('ĐĂNG KÝ', style: TextStyle(fontSize: 18)),
+                    style: ElevatedButton.styleFrom(backgroundColor: mcAccentColor, minimumSize: Size(double.infinity, 50)),
+                  ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+// --- Màn hình Điều hướng Chính (Bottom Navigation) ---
+class MainNavigationScreen extends StatefulWidget {
+  final UserProfile userProfile;
+  final VoidCallback onLogout;
+
+  MainNavigationScreen({required this.userProfile, required this.onLogout, Key? key}) : super(key: key);
+
+  @override
+  _MainNavigationScreenState createState() => _MainNavigationScreenState();
+}
+
+class _MainNavigationScreenState extends State<MainNavigationScreen> {
+  int _selectedIndex = 0;
+  final PageController _pageController = PageController();
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  List<Widget> get _widgetOptions => <Widget>[
+    HomeScreen(),
+    CartScreen(isStandalone: false),
+    ProfileScreen(userProfile: widget.userProfile, onLogout: widget.onLogout),
+    ChatBotScreen(),
+  ];
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+      _pageController.jumpToPage(index);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: PageView(
+        controller: _pageController,
+        onPageChanged: (index) {
+          setState(() {
+            _selectedIndex = index;
+          });
+        },
+        children: _widgetOptions,
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Trang chủ'),
+          BottomNavigationBarItem(icon: Icon(Icons.shopping_cart_outlined), activeIcon: Icon(Icons.shopping_cart), label: 'Giỏ hàng'),
+          BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: 'Hồ sơ'),
+          BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), activeIcon: Icon(Icons.chat_bubble), label: 'Chatbot'),
+        ],
+        currentIndex: _selectedIndex,
+        selectedItemColor: mcAccentColor,
+        unselectedItemColor: Colors.grey.shade600,
+        onTap: _onItemTapped,
+        backgroundColor: Colors.white,
+        type: BottomNavigationBarType.fixed,
+      ),
+    );
+  }
+}
+
+// --- Màn hình Trang Chủ (HomeScreen) ---
+class HomeScreen extends StatefulWidget {
+  @override
+  _HomeScreenState createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  MedicineCategory? _selectedCategory;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchText = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(() {
+      if (mounted) {
+        setState(() {
+          _searchText = _searchController.text;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<Medicine> get _filteredMedicineList {
+    List<Medicine> list = mockMedicineList;
+    if (_selectedCategory != null) {
+      list = list.where((m) => m.category == _selectedCategory).toList();
+    }
+    if (_searchText.isNotEmpty) {
+      list = list.where((m) => m.name.toLowerCase().contains(_searchText.toLowerCase())).toList();
+    }
+    return list;
+  }
+
+  void _addItemToCart(Medicine medicine) {
+    if (_currentUserProfile == null) {
+        _showSnackBar(context, 'Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng.', color: Colors.red.shade400);
+        return;
+    }
+    final existingIndex = mockCartItems.indexWhere((item) => item.id == medicine.id);
+    setState(() {
+      if (existingIndex != -1) {
+        mockCartItems[existingIndex].quantity += 1;
+      } else {
+        mockCartItems.add(CartItem(
+          id: medicine.id, medicineName: medicine.name, unitPrice: medicine.price,
+          quantity: 1, imageUrl: medicine.imageUrl,
+        ));
+      }
+    });
+    _showSnackBar(context, 'Đã thêm 1 ${medicine.name} vào giỏ hàng!');
+  }
+
+  void _toggleFavorite(String medicineId) {
+    if (_currentUserProfile == null) {
+      _showSnackBar(context, 'Vui lòng đăng nhập để sử dụng chức năng yêu thích.', color: Colors.red.shade400);
+      return;
+    }
+    setState(() {
+      if (mockFavoriteIds.contains(medicineId)) {
+        mockFavoriteIds.remove(medicineId);
+        _showSnackBar(context, 'Đã xóa khỏi danh sách yêu thích.');
+      } else {
+        mockFavoriteIds.add(medicineId);
+        _showSnackBar(context, 'Đã thêm vào danh sách yêu thích.');
+      }
+    });
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16.0, bottom: 8.0, left: 16.0, right: 16.0),
+      child: TextField(
+        controller: _searchController,
+        decoration: InputDecoration(
+          hintText: 'Tìm kiếm thuốc, thực phẩm chức năng...',
+          prefixIcon: Icon(Icons.search),
+          suffixIcon: _searchText.isNotEmpty ? IconButton(
+            icon: Icon(Icons.clear, color: Colors.grey.shade500),
+            onPressed: () { _searchController.clear(); setState(() { _searchText = ''; }); },
+          ) : null,
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          contentPadding: EdgeInsets.symmetric(vertical: 15),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategorySelector() {
+    return Container(
+      height: 40,
+      margin: const EdgeInsets.symmetric(vertical: 8.0),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+        child: Row(
+          children: [
+            _buildCategoryPill(null, 'Tất cả'),
+            ...MedicineCategory.values.map((category) => _buildCategoryPill(category, getCategoryDisplayName(category))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategoryPill(MedicineCategory? category, String name) {
+    final isSelected = category == _selectedCategory;
+    return GestureDetector(
+      onTap: () { setState(() { _selectedCategory = isSelected ? null : category; }); },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        margin: const EdgeInsets.only(right: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? mcAccentColor : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: isSelected ? mcAccentColor : Colors.grey.shade300),
+          boxShadow: [ if (isSelected) BoxShadow(color: mcAccentColor.withOpacity(0.2), blurRadius: 4, offset: Offset(0, 2)), ],
+        ),
+        child: Text(
+          name,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.black87,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            fontSize: 14,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title, {VoidCallback? onTap, String? actionText}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+          if (onTap != null && actionText != null)
+            GestureDetector(
+              onTap: onTap,
+              child: Text(actionText, style: TextStyle(color: mcPrimaryColor, fontWeight: FontWeight.bold)),
+            ),
+        ],
+      ),
+    );
+  }
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('MEDCARE Pharmacy'),
+        automaticallyImplyLeading: false,
+        actions: [
+          IconButton(icon: Icon(Icons.notifications_none), onPressed: () => _showSnackBar(context, 'Chức năng Thông báo')),
+        ],
+      ),
+      body: CustomScrollView(
+        slivers: [
+          SliverList(
+            delegate: SliverChildListDelegate([
+              _buildSearchBar(),
+              _buildSectionTitle('Danh mục Sản phẩm', actionText: 'Xem tất cả', onTap: () => _showSnackBar(context, 'Chức năng Xem tất cả danh mục')),
+              _buildCategorySelector(),
+            ]),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.all(16.0),
+            sliver: _filteredMedicineList.isEmpty
+                ? SliverToBoxAdapter(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 50.0),
+                        child: Text('Không tìm thấy sản phẩm nào.', style: TextStyle(fontSize: 16, color: Colors.grey)),
+                      ),
+                    ),
+                  )
+                : SliverGrid(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2, crossAxisSpacing: 16.0, mainAxisSpacing: 16.0, childAspectRatio: 0.7,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final medicine = _filteredMedicineList[index];
+                        final isFavorite = mockFavoriteIds.contains(medicine.id);
+                        return MedicineGridItem(
+                          medicine: medicine, isFavorite: isFavorite, onToggleFavorite: _toggleFavorite,
+                          onAddToCart: _addItemToCart,
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ProductDetailScreen(medicine: medicine))),
+                        );
+                      },
+                      childCount: _filteredMedicineList.length,
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- MedicineGridItem và ProductDetailScreen (Giữ nguyên) ---
+
+class MedicineGridItem extends StatelessWidget {
+  final Medicine medicine;
+  final bool isFavorite;
+  final Function(String) onToggleFavorite;
+  final Function(Medicine) onAddToCart;
+  final VoidCallback onTap;
+
+  const MedicineGridItem({
+    required this.medicine, required this.isFavorite, required this.onToggleFavorite,
+    required this.onAddToCart, required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white, borderRadius: BorderRadius.circular(15),
+          boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.15), spreadRadius: 2, blurRadius: 6, offset: Offset(0, 3)),],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Stack(
+                alignment: Alignment.topRight,
+                children: [
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Image.asset(medicine.imageUrl, fit: BoxFit.contain, height: 120, errorBuilder: (context, error, stackTrace) => Icon(Icons.broken_image, size: 80, color: Colors.grey)),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : Colors.grey.shade400, size: 24),
+                    onPressed: () => onToggleFavorite(medicine.id),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 5),
+              child: Text(medicine.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10.0),
+              child: Text(getCategoryDisplayName(medicine.category), style: TextStyle(fontSize: 12, color: mcPrimaryColor, fontWeight: FontWeight.w500)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 5, 10, 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(_formatCurrency(medicine.price), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: mcAccentColor)),
+                  SizedBox(
+                    height: 30, width: 30,
+                    child: ElevatedButton(
+                      onPressed: () => onAddToCart(medicine),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: mcAccentColor, foregroundColor: Colors.white, padding: EdgeInsets.zero,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: Icon(Icons.add, size: 18),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ProductDetailScreen extends StatelessWidget {
+  final Medicine medicine;
+  const ProductDetailScreen({required this.medicine});
+
+  void _addItemToCart(BuildContext context, Medicine medicine) {
+    if (_currentUserProfile == null) {
+      _showSnackBar(context, 'Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng.', color: Colors.red.shade400);
+      return;
+    }
+
+    final existingIndex = mockCartItems.indexWhere((item) => item.id == medicine.id);
+    if (existingIndex != -1) {
+      mockCartItems[existingIndex].quantity += 1;
+    } else {
+      mockCartItems.add(CartItem(
+        id: medicine.id, medicineName: medicine.name, unitPrice: medicine.price,
+        quantity: 1, imageUrl: medicine.imageUrl,
+      ));
+    }
+    _showSnackBar(context, 'Đã thêm 1 ${medicine.name} vào giỏ hàng!');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Chi tiết Sản phẩm')),
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(30.0),
+                child: Image.asset(
+                  medicine.imageUrl, height: 200, fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) => Icon(Icons.broken_image, size: 150, color: Colors.grey),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(medicine.name, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87)),
+                  const SizedBox(height: 8),
+                  Text(getCategoryDisplayName(medicine.category), style: TextStyle(fontSize: 16, color: mcPrimaryColor, fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 15),
+                  Text(_formatCurrency(medicine.price), style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: mcAccentColor)),
+                  const Divider(height: 30),
+                  _buildDetailRow('Thành phần hoạt chất:', medicine.activeIngredient),
+                  _buildDetailRow('Xuất xứ:', medicine.origin),
+                  _buildDetailRow('Quy cách đóng gói:', medicine.dosage),
+                  const Divider(height: 30),
+                  Text('Mô tả chung', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text(medicine.generalDescription, style: TextStyle(fontSize: 16, height: 1.5, color: Colors.grey.shade700)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.grey.shade300, blurRadius: 10)]),
+        child: ElevatedButton.icon(
+          onPressed: () => _addItemToCart(context, medicine),
+          icon: Icon(Icons.shopping_cart_outlined),
+          label: Text('THÊM VÀO GIỎ HÀNG'),
+          style: ElevatedButton.styleFrom(minimumSize: Size(double.infinity, 50)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 150, child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black87))),
+          Expanded(child: Text(value, style: TextStyle(color: Colors.grey.shade700))),
+        ],
+      ),
+    );
+  }
+}
+
+// --- CartScreen và CartItemWidget (Giữ nguyên logic chính) ---
+class CartScreen extends StatefulWidget {
+  final bool isStandalone;
+  CartScreen({required this.isStandalone});
+  @override
+  _CartScreenState createState() => _CartScreenState();
+}
+
+class _CartScreenState extends State<CartScreen> {
+  double get _cartTotal => mockCartItems.fold(0.0, (sum, item) => sum + item.totalPrice);
+  void _updateQuantity(String itemId, int newQuantity) {
+    setState(() {
+      final index = mockCartItems.indexWhere((item) => item.id == itemId);
+      if (index != -1) {
+        if (newQuantity > 0) {
+          mockCartItems[index].quantity = newQuantity;
+        } else {
+          mockCartItems.removeAt(index);
+          _showSnackBar(context, 'Đã xóa sản phẩm khỏi giỏ hàng.', color: Colors.red);
+        }
+      }
+    });
+  }
+  void _removeItem(String itemId) {
+    setState(() { mockCartItems.removeWhere((item) => item.id == itemId); });
+    _showSnackBar(context, 'Đã xóa sản phẩm khỏi giỏ hàng.', color: Colors.red);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: widget.isStandalone ? AppBar(title: Text('Giỏ Hàng')) : null,
+      body: mockCartItems.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.shopping_cart_outlined, size: 100, color: Colors.grey.shade400),
+                  const SizedBox(height: 20),
+                  Text('Giỏ hàng của bạn đang trống', style: TextStyle(fontSize: 18, color: Colors.grey)),
+                  const SizedBox(height: 30),
+                  if (widget.isStandalone)
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text('TIẾP TỤC MUA SẮM'),
+                      style: ElevatedButton.styleFrom(backgroundColor: mcPrimaryColor, padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15)),
+                    ),
+                ],
+              ),
+            )
+          : Column(
+              children: [
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.only(top: 10),
+                    itemCount: mockCartItems.length,
+                    itemBuilder: (context, index) {
+                      final item = mockCartItems[index];
+                      return CartItemWidget(item: item, onUpdateQuantity: _updateQuantity, onRemove: _removeItem);
+                    },
+                  ),
+                ),
+                _buildCartSummary(context),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildCartSummary(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+        boxShadow: [BoxShadow(color: Colors.grey.shade300, blurRadius: 10, offset: Offset(0, -2))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Tổng cộng:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+              Text(_formatCurrency(_cartTotal), style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: mcAccentColor)),
+            ],
+          ),
+          const SizedBox(height: 15),
+          ElevatedButton(
+            onPressed: () {
+              if (_currentUserProfile == null) {
+                _showSnackBar(context, 'Vui lòng đăng nhập để tiến hành Thanh toán.', color: Colors.red.shade400);
+              } else {
+                Navigator.pushNamed(context, '/checkout');
+              }
+            },
+            child: Text('TIẾN HÀNH THANH TOÁN (${mockCartItems.length} sản phẩm)'),
+            style: ElevatedButton.styleFrom(minimumSize: Size(double.infinity, 50)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class CartItemWidget extends StatelessWidget {
+  final CartItem item;
+  final Function(String, int) onUpdateQuantity;
+  final Function(String) onRemove;
+
+  const CartItemWidget({
+    required this.item, required this.onUpdateQuantity, required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 70, height: 70,
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), color: mcBackgroundColor),
+              child: Image.asset(item.imageUrl, fit: BoxFit.contain, errorBuilder: (context, error, stackTrace) => Icon(Icons.broken_image, size: 40, color: Colors.grey)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(item.medicineName, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Colors.black87), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 4),
+                  Text('Đơn giá: ${_formatCurrency(item.unitPrice)}', style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(10)),
+                        child: Row(
+                          children: [
+                            IconButton(icon: Icon(Icons.remove, size: 20), padding: EdgeInsets.zero, constraints: BoxConstraints(), onPressed: () => onUpdateQuantity(item.id, item.quantity - 1)),
+                            Padding(padding: const EdgeInsets.symmetric(horizontal: 8.0), child: Text(item.quantity.toString(), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                            IconButton(icon: Icon(Icons.add, size: 20), padding: EdgeInsets.zero, constraints: BoxConstraints(), onPressed: () => onUpdateQuantity(item.id, item.quantity + 1)),
+                          ],
+                        ),
+                      ),
+                      Text(_formatCurrency(item.totalPrice), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: mcAccentColor)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            IconButton(icon: Icon(Icons.close, color: Colors.red.shade400, size: 20), onPressed: () => onRemove(item.id)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =========================================================================
+//                             5. MÀN HÌNH THANH TOÁN (CHECKOUT)
+// =========================================================================
+
+class CheckoutScreen extends StatefulWidget {
+  @override
+  _CheckoutScreenState createState() => _CheckoutScreenState();
+}
+
+class _CheckoutScreenState extends State<CheckoutScreen> {
+  Address? _selectedAddress;
+  String _selectedPaymentMethod = 'COD'; // Mặc định là thanh toán khi nhận hàng
+  double _shippingFee = 25000;
+  double get _cartTotal => mockCartItems.fold(0.0, (sum, item) => sum + item.totalPrice);
+  double get _grandTotal => _cartTotal + _shippingFee;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedAddress = mockAddresses.firstWhere((a) => a.isDefault, orElse: () => mockAddresses.isEmpty ? null as Address : mockAddresses.first);
+  }
+
+  void _placeOrder() async {
+    if (mockCartItems.isEmpty) {
+      _showSnackBar(context, 'Giỏ hàng trống! Vui lòng thêm sản phẩm.', color: Colors.red);
+      return;
+    }
+    if (_selectedAddress == null) {
+      _showSnackBar(context, 'Vui lòng chọn địa chỉ giao hàng.', color: Colors.red);
+      return;
+    }
+
+    final newOrderId = 'ORD${DateTime.now().millisecondsSinceEpoch}';
+    final newOrder = Order(
+      orderId: newOrderId,
+      orderDate: DateTime.now(),
+      totalAmount: _grandTotal,
+      items: mockCartItems.map((item) => OrderItem(medicineName: item.medicineName, unitPrice: item.unitPrice, quantity: item.quantity)).toList(),
+      deliveryAddress: _selectedAddress!,
+      paymentMethod: _selectedPaymentMethod == 'COD' ? 'Thanh toán khi nhận hàng (COD)' : 'Thẻ tín dụng/ATM',
+      status: 'Đang chờ xác nhận',
+    );
+
+    // --- PHẦN ĐÃ CẬP NHẬT: CHUYỂN THÀNH JSON VÀ IN RA ---
+    final orderJsonMap = newOrder.toJson();
+    // Sử dụng jsonEncode để chuyển Map thành chuỗi JSON
+    final orderJsonString = jsonEncode(orderJsonMap); 
+
+    print('====================== ORDER JSON GỬI ĐẾN API ======================');
+    print(orderJsonString);
+    print('====================================================================');
+    // --------------------------------------------------------------------------
+
+    setState(() {
+      mockOrderHistory.insert(0, newOrder); // Thêm vào đầu danh sách lịch sử
+      mockCartItems.clear(); // Xóa giỏ hàng
+      _showSnackBar(context, 'Đặt hàng thành công! (Dữ liệu JSON đã được in ra).', color: mcAccentColor);
+      Navigator.popUntil(context, (route) => route.isFirst); // Quay về MainNavigationScreen
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Thanh toán')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionHeader('Địa chỉ Giao hàng'),
+            _buildAddressSelector(context),
+            const SizedBox(height: 20),
+
+            _buildSectionHeader('Phương thức Thanh toán'),
+            _buildPaymentMethodSelector(),
+            const SizedBox(height: 20),
+
+            _buildSectionHeader('Tóm tắt Đơn hàng'),
+            _buildOrderSummary(),
+            const SizedBox(height: 20),
+
+            _buildSectionHeader('Sản phẩm (${mockCartItems.length})'),
+            ...mockCartItems.map((item) => _buildCheckoutItem(item)).toList(),
+
+          ],
+        ),
+      ),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.grey.shade300, blurRadius: 10)]),
+        child: ElevatedButton(
+          onPressed: _placeOrder,
+          child: Text('ĐẶT HÀNG - ${_formatCurrency(_grandTotal)}'),
+          style: ElevatedButton.styleFrom(minimumSize: Size(double.infinity, 50)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Text(
+        title,
+        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: mcPrimaryColor),
+      ),
+    );
+  }
+
+  Widget _buildAddressSelector(BuildContext context) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: ListTile(
+        leading: Icon(Icons.location_on, color: mcAccentColor),
+        title: Text(_selectedAddress?.name ?? 'Chưa chọn Địa chỉ', style: TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text(_selectedAddress != null
+            ? '${_selectedAddress!.phone}\n${_selectedAddress!.street}, ${_selectedAddress!.district}, ${_selectedAddress!.city}'
+            : 'Vui lòng chọn địa chỉ giao hàng.',
+            maxLines: 3, overflow: TextOverflow.ellipsis),
+        trailing: Icon(Icons.arrow_forward_ios, size: 18),
+        onTap: () async {
+          final result = await Navigator.pushNamed(context, '/addresses', arguments: true); // Mở màn hình chọn
+          if (result != null && result is Address) {
+            setState(() {
+              _selectedAddress = result;
+            });
+            _showSnackBar(context, 'Đã chọn địa chỉ: ${result.name}', color: mcPrimaryColor);
+          }
+        },
+        isThreeLine: true,
+      ),
+    );
+  }
+
+  Widget _buildPaymentMethodSelector() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Column(
+        children: [
+          RadioListTile<String>(
+            title: Text('Thanh toán khi nhận hàng (COD)'),
+            secondary: Icon(Icons.money, color: _selectedPaymentMethod == 'COD' ? mcAccentColor : Colors.grey),
+            value: 'COD',
+            groupValue: _selectedPaymentMethod,
+            onChanged: (value) => setState(() => _selectedPaymentMethod = value!),
+          ),
+          RadioListTile<String>(
+            title: Text('Thẻ Tín dụng / ATM'),
+            secondary: Icon(Icons.credit_card, color: _selectedPaymentMethod == 'Card' ? mcAccentColor : Colors.grey),
+            value: 'Card',
+            groupValue: _selectedPaymentMethod,
+            onChanged: (value) => setState(() => _selectedPaymentMethod = value!),
+            subtitle: mockPaymentCards.isNotEmpty
+                ? Text('Thẻ mặc định: ${mockPaymentCards.firstWhere((p) => p.isDefault, orElse: () => mockPaymentCards.first).cardNumber}')
+                : Text('Chưa có thẻ nào được thêm.'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrderSummary() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            _buildSummaryRow('Tổng tiền hàng', _cartTotal, isTotal: false),
+            _buildSummaryRow('Phí vận chuyển', _shippingFee, isTotal: false),
+            const Divider(),
+            _buildSummaryRow('TỔNG THANH TOÁN', _grandTotal, isTotal: true),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryRow(String label, double amount, {required bool isTotal}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(
+            fontSize: isTotal ? 18 : 16,
+            fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+            color: isTotal ? Colors.black87 : Colors.grey.shade700,
+          )),
+          Text(_formatCurrency(amount), style: TextStyle(
+            fontSize: isTotal ? 20 : 16,
+            fontWeight: isTotal ? FontWeight.bold : FontWeight.w600,
+            color: isTotal ? mcAccentColor : Colors.black87,
+          )),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCheckoutItem(CartItem item) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: [
+          Container(
+            width: 50, height: 50,
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), color: Colors.white),
+            child: Image.asset(item.imageUrl, fit: BoxFit.contain),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(item.medicineName, style: TextStyle(fontWeight: FontWeight.w500)),
+          ),
+          Text('x${item.quantity}', style: TextStyle(color: Colors.grey.shade600)),
+          const SizedBox(width: 10),
+          Text(_formatCurrency(item.totalPrice), style: TextStyle(fontWeight: FontWeight.bold, color: mcAccentColor)),
+        ],
+      ),
+    );
+  }
+}
+
+// =========================================================================
+//                             6. MÀN HÌNH HỒ SƠ (PROFILE) VÀ CHI TIẾT
+// =========================================================================
+
+// --- ProfileScreen (Cập nhật để hiển thị thông tin mới nhất) ---
+
+class ProfileScreen extends StatelessWidget {
+  final UserProfile userProfile;
+  final VoidCallback onLogout;
+
+  ProfileScreen({required this.userProfile, required this.onLogout});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Hồ sơ Cá nhân'), automaticallyImplyLeading: false),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            children: [
+              _buildUserInfoCard(context),
+              const SizedBox(height: 20),
+              _buildSectionTitle(context, 'Quản lý Tài khoản'),
+              _buildProfileOption(context, Icons.edit_note, 'Chỉnh sửa Hồ sơ', '/edit-profile'),
+              _buildProfileOption(context, Icons.favorite_border, 'Danh sách Yêu thích (${mockFavoriteIds.length})', '/favorites'),
+              _buildProfileOption(context, Icons.history, 'Lịch sử Đơn hàng (${mockOrderHistory.length})', '/order-history'),
+              const SizedBox(height: 20),
+              _buildSectionTitle(context, 'Cài đặt Giao dịch'),
+              _buildProfileOption(context, Icons.location_on_outlined, 'Sổ địa chỉ (${mockAddresses.length})', '/addresses'),
+              _buildProfileOption(context, Icons.credit_card, 'Thông tin Thanh toán (${mockPaymentCards.length})', '/payments'),
+              const SizedBox(height: 20),
+              _buildSectionTitle(context, 'Cài đặt & Hỗ trợ'),
+              _buildProfileOption(context, Icons.security, 'Bảo mật Tài khoản', '/security'),
+              _buildProfileOption(context, Icons.settings, 'Cài đặt Chung', '/settings'),
+              _buildProfileOption(context, Icons.help_outline, 'Trung tâm Hỗ trợ', '/support'),
+              const SizedBox(height: 30),
+              ElevatedButton.icon(
+                onPressed: onLogout,
+                icon: Icon(Icons.logout),
+                label: Text('ĐĂNG XUẤT', style: TextStyle(fontSize: 16)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700, foregroundColor: Colors.white,
+                  minimumSize: Size(double.infinity, 50), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              const SizedBox(height: 30),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserInfoCard(BuildContext context) {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 40,
+              backgroundColor: mcAccentColor.withOpacity(0.1),
+              child: Text(userProfile.fullName.substring(0, 1).toUpperCase(), style: TextStyle(fontSize: 30, color: mcAccentColor, fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(width: 20),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(userProfile.fullName, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87)),
+                const SizedBox(height: 4),
+                Text(userProfile.email, style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
+                const SizedBox(height: 4),
+                Text(userProfile.phoneNumber, style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(BuildContext context, String title) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8.0),
+        child: Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: mcPrimaryColor)),
+      ),
+    );
+  }
+
+  Widget _buildProfileOption(BuildContext context, IconData icon, String title, String route) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: ListTile(
+        leading: Icon(icon, color: mcPrimaryColor),
+        title: Text(title, style: TextStyle(fontSize: 16)),
+        trailing: Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey.shade400),
+        onTap: () => Navigator.pushNamed(context, route),
+      ),
+    );
+  }
+}
+
+// --- 6a. Chỉnh sửa Hồ sơ (EditProfileScreen) ---
+class EditProfileScreen extends StatefulWidget {
+  final Function(UserProfile) onProfileUpdated;
+  EditProfileScreen({required this.onProfileUpdated});
+
+  @override
+  _EditProfileScreenState createState() => _EditProfileScreenState();
+}
+
+class _EditProfileScreenState extends State<EditProfileScreen> {
+  final _formKey = GlobalKey<FormState>();
+  late UserProfile _tempUser;
+
+  @override
+  void initState() {
+    super.initState();
+    _tempUser = _currentUserProfile!.copyWith();
+  }
+
+  void _saveProfile() {
+    if (_formKey.currentState!.validate()) {
+      _formKey.currentState!.save();
+      
+      setState(() {
+        _currentUserProfile!.fullName = _tempUser.fullName;
+        _currentUserProfile!.phoneNumber = _tempUser.phoneNumber;
+        _currentUserProfile!.gender = _tempUser.gender;
+        _currentUserProfile!.dob = _tempUser.dob;
+      });
+      
+      widget.onProfileUpdated(_currentUserProfile!);
+
+      _showSnackBar(context, 'Cập nhật hồ sơ thành công!', color: mcAccentColor);
+      Navigator.pop(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Chỉnh sửa Hồ sơ')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildInfoField(
+                'Họ và Tên', Icons.person, _tempUser.fullName,
+                (val) => _tempUser = _tempUser.copyWith(fullName: val),
+                TextInputType.text,
+              ),
+              _buildInfoField(
+                'Email', Icons.email, _tempUser.email,
+                (val) => {}, // Email là Read-only
+                TextInputType.emailAddress,
+                readOnly: true,
+              ),
+              _buildInfoField(
+                'Số điện thoại', Icons.phone, _tempUser.phoneNumber,
+                (val) => _tempUser = _tempUser.copyWith(phoneNumber: val),
+                TextInputType.phone,
+              ),
+              _buildGenderSelector(),
+              _buildDobField(),
+              const SizedBox(height: 30),
+              ElevatedButton(
+                onPressed: _saveProfile,
+                child: Text('LƯU THAY ĐỔI', style: TextStyle(fontSize: 18)),
+                style: ElevatedButton.styleFrom(minimumSize: Size(double.infinity, 50)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoField(String label, IconData icon, String initialValue, Function(String) onSave, TextInputType keyboardType, {bool readOnly = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20.0),
+      child: TextFormField(
+        initialValue: initialValue,
+        keyboardType: keyboardType,
+        readOnly: readOnly,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon),
+          suffixIcon: readOnly ? Icon(Icons.lock_outline, color: Colors.grey) : null,
+          fillColor: readOnly ? Colors.grey.shade100 : Colors.white,
+          filled: true,
+        ),
+        validator: (val) {
+          if (val == null || val.isEmpty) return 'Vui lòng nhập $label';
+          return null;
+        },
+        onSaved: (val) => onSave(val!),
+      ),
+    );
+  }
+
+  Widget _buildGenderSelector() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20.0),
+      child: DropdownButtonFormField<String>(
+        decoration: InputDecoration(
+          labelText: 'Giới tính',
+          prefixIcon: Icon(Icons.wc),
+        ),
+        value: _tempUser.gender,
+        items: ['Nam', 'Nữ', 'Không xác định'].map((String value) {
+          return DropdownMenuItem<String>(
+            value: value,
+            child: Text(value),
+          );
+        }).toList(),
+        onChanged: (String? newValue) {
+          setState(() {
+            _tempUser = _tempUser.copyWith(gender: newValue!);
+          });
+        },
+        validator: (val) => val == null || val.isEmpty ? 'Vui lòng chọn Giới tính' : null,
+      ),
+    );
+  }
+
+  Widget _buildDobField() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20.0),
+      child: TextFormField(
+        initialValue: _tempUser.dob,
+        readOnly: true,
+        decoration: InputDecoration(
+          labelText: 'Ngày sinh (DD/MM/YYYY)',
+          prefixIcon: Icon(Icons.calendar_today),
+        ),
+        onTap: () async {
+          final DateTime? picked = await showDatePicker(
+            context: context,
+            initialDate: DateTime.now(),
+            firstDate: DateTime(1900),
+            lastDate: DateTime.now(),
+          );
+          if (picked != null) {
+            setState(() {
+              _tempUser = _tempUser.copyWith(dob: '${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}');
+            });
+          }
+        },
+        validator: (val) => val == null || val.isEmpty ? 'Vui lòng chọn Ngày sinh' : null,
+        onSaved: (val) => _tempUser = _tempUser.copyWith(dob: val!),
+      ),
+    );
+  }
+}
+
+// --- 6b. Sổ Địa chỉ (AddressScreen) ---
+class AddressScreen extends StatefulWidget {
+  @override
+  _AddressScreenState createState() => _AddressScreenState();
+}
+
+class _AddressScreenState extends State<AddressScreen> {
+  bool get isSelecting => ModalRoute.of(context)!.settings.arguments as bool? ?? false;
+
+  void _setDefaultAddress(Address selectedAddress) {
+    setState(() {
+      for (var address in mockAddresses) {
+        address.isDefault = false;
+      }
+      selectedAddress.isDefault = true;
+    });
+    _showSnackBar(context, 'Đã đặt địa chỉ mặc định thành công!', color: mcAccentColor);
+  }
+
+  void _deleteAddress(Address address) {
+    setState(() {
+      mockAddresses.removeWhere((a) => a.id == address.id);
+    });
+    _showSnackBar(context, 'Đã xóa địa chỉ thành công.', color: Colors.red);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(isSelecting ? 'Chọn Địa chỉ Giao hàng' : 'Sổ Địa chỉ')),
+      body: mockAddresses.isEmpty
+          ? Center(child: Text('Chưa có địa chỉ nào được thêm.'))
+          : ListView.builder(
+              padding: const EdgeInsets.all(16.0),
+              itemCount: mockAddresses.length,
+              itemBuilder: (context, index) {
+                final address = mockAddresses[index];
+                return _buildAddressCard(context, address);
+              },
+            ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          await Navigator.pushNamed(context, '/add-edit-address');
+          setState(() {}); // Cập nhật lại UI sau khi thêm/sửa
+        },
+        label: Text('Thêm Địa chỉ'),
+        icon: Icon(Icons.add_location_alt),
+        backgroundColor: mcAccentColor,
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    );
+  }
+
+  Widget _buildAddressCard(BuildContext context, Address address) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 15),
+      elevation: 3,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: address.isDefault ? BorderSide(color: mcAccentColor, width: 2) : BorderSide.none,
+      ),
+      child: InkWell(
+        onTap: isSelecting
+            ? () => Navigator.pop(context, address)
+            : () async {
+                await Navigator.pushNamed(context, '/add-edit-address', arguments: address);
+                setState(() {});
+              },
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    address.name,
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  if (address.isDefault)
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: mcAccentColor,
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: Text('Mặc định', style: TextStyle(color: Colors.white, fontSize: 12)),
+                    ),
+                ],
+              ),
+              const Divider(height: 10),
+              Text(address.phone, style: TextStyle(color: Colors.grey.shade700)),
+              const SizedBox(height: 5),
+              Text('${address.street}, ${address.district}, ${address.city}', maxLines: 2, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 10),
+              if (!isSelecting)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () async {
+                        await Navigator.pushNamed(context, '/add-edit-address', arguments: address);
+                        setState(() {});
+                      },
+                      child: Text('Sửa', style: TextStyle(color: mcPrimaryColor)),
+                    ),
+                    const SizedBox(width: 8),
+                    if (!address.isDefault)
+                      TextButton(
+                        onPressed: () => _setDefaultAddress(address),
+                        child: Text('Đặt Mặc định', style: TextStyle(color: mcAccentColor)),
+                      ),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: () => _confirmDelete(address),
+                      child: Text('Xóa', style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _confirmDelete(Address address) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Xác nhận xóa'),
+        content: Text('Bạn có chắc chắn muốn xóa địa chỉ này không?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('HỦY')),
+          TextButton(
+            onPressed: () {
+              _deleteAddress(address);
+              Navigator.pop(context);
+            },
+            child: Text('XÓA', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- 6c. Thêm/Sửa Địa chỉ (AddEditAddressScreen) ---
+class AddEditAddressScreen extends StatefulWidget {
+  @override
+  _AddEditAddressScreenState createState() => _AddEditAddressScreenState();
+}
+
+class _AddEditAddressScreenState extends State<AddEditAddressScreen> {
+  final _formKey = GlobalKey<FormState>();
+  late Address _currentAddress;
+  bool _isEditing = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final Address? addressToEdit = ModalRoute.of(context)!.settings.arguments as Address?;
+
+    if (addressToEdit != null) {
+      _currentAddress = addressToEdit;
+      _isEditing = true;
+    } else {
+      _currentAddress = Address(
+        id: 'A${DateTime.now().millisecondsSinceEpoch}',
+        name: _currentUserProfile!.fullName,
+        phone: _currentUserProfile!.phoneNumber,
+        street: '', district: 'Quận 1', city: 'TP.HCM', isDefault: mockAddresses.isEmpty,
+      );
+    }
+  }
+
+  void _saveAddress() {
+    if (_formKey.currentState!.validate()) {
+      _formKey.currentState!.save();
+
+      if (_currentAddress.isDefault) {
+        for (var address in mockAddresses) {
+          if (address.id != _currentAddress.id) {
+            address.isDefault = false;
+          }
+        }
+      }
+
+      setState(() {
+        if (_isEditing) {
+          final index = mockAddresses.indexWhere((a) => a.id == _currentAddress.id);
+          if (index != -1) {
+            mockAddresses[index] = _currentAddress;
+          }
+          _showSnackBar(context, 'Cập nhật địa chỉ thành công!', color: mcAccentColor);
+        } else {
+          mockAddresses.add(_currentAddress);
+          _showSnackBar(context, 'Thêm địa chỉ thành công!', color: mcAccentColor);
+        }
+      });
+
+      Navigator.pop(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(_isEditing ? 'Sửa Địa chỉ' : 'Thêm Địa chỉ mới')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildTextFormField('Người nhận', Icons.person, _currentAddress.name, (val) => _currentAddress.name = val!),
+              _buildTextFormField('Số điện thoại', Icons.phone, _currentAddress.phone, (val) => _currentAddress.phone = val!, TextInputType.phone),
+              _buildTextFormField('Tên đường, số nhà', Icons.house, _currentAddress.street, (val) => _currentAddress.street = val!),
+
+              _buildDropdownFormField('Thành phố', Icons.location_city, _currentAddress.city, ['TP.HCM', 'Hà Nội', 'Đà Nẵng'], (val) => _currentAddress.city = val!),
+              _buildDropdownFormField('Quận/Huyện', Icons.map, _currentAddress.district, ['Quận 1', 'Quận 10', 'Quận Tân Bình'], (val) => _currentAddress.district = val!),
+
+              SwitchListTile(
+                title: Text('Đặt làm Địa chỉ Mặc định'),
+                value: _currentAddress.isDefault,
+                onChanged: (bool value) {
+                  setState(() {
+                    _currentAddress.isDefault = value;
+                  });
+                },
+                activeColor: mcAccentColor,
+                contentPadding: EdgeInsets.zero,
+              ),
+
+              const SizedBox(height: 30),
+              ElevatedButton(
+                onPressed: _saveAddress,
+                child: Text(_isEditing ? 'LƯU THAY ĐỔI' : 'THÊM ĐỊA CHỈ'),
+                style: ElevatedButton.styleFrom(minimumSize: Size(double.infinity, 50)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextFormField(String label, IconData icon, String initialValue, Function(String?) onSave, [TextInputType keyboardType = TextInputType.text]) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20.0),
+      child: TextFormField(
+        initialValue: initialValue,
+        keyboardType: keyboardType,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon),
+        ),
+        validator: (val) => val!.isEmpty ? 'Vui lòng nhập $label' : null,
+        onSaved: onSave,
+      ),
+    );
+  }
+
+  Widget _buildDropdownFormField(String label, IconData icon, String initialValue, List<String> options, Function(String?) onSave) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20.0),
+      child: DropdownButtonFormField<String>(
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon),
+        ),
+        value: initialValue,
+        items: options.map((String value) {
+          return DropdownMenuItem<String>(
+            value: value,
+            child: Text(value),
+          );
+        }).toList(),
+        onChanged: (String? newValue) {
+          onSave(newValue);
+        },
+        validator: (val) => val == null || val.isEmpty ? 'Vui lòng chọn $label' : null,
+        onSaved: onSave,
+      ),
+    );
+  }
+}
+
+// --- 6d. Thông tin Thanh toán (PaymentScreen) ---
+class PaymentScreen extends StatefulWidget {
+  @override
+  _PaymentScreenState createState() => _PaymentScreenState();
+}
+
+class _PaymentScreenState extends State<PaymentScreen> {
+  void _setDefaultCard(PaymentCard selectedCard) {
+    setState(() {
+      for (var card in mockPaymentCards) {
+        card.isDefault = false;
+      }
+      selectedCard.isDefault = true;
+    });
+    _showSnackBar(context, 'Đã đặt thẻ mặc định thành công!', color: mcAccentColor);
+  }
+
+  void _deleteCard(PaymentCard card) {
+    setState(() {
+      mockPaymentCards.removeWhere((p) => p.id == card.id);
+    });
+    _showSnackBar(context, 'Đã xóa thẻ thành công.', color: Colors.red);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Thông tin Thanh toán')),
+      body: mockPaymentCards.isEmpty
+          ? Center(child: Text('Chưa có thẻ thanh toán nào được thêm.'))
+          : ListView.builder(
+              padding: const EdgeInsets.all(16.0),
+              itemCount: mockPaymentCards.length,
+              itemBuilder: (context, index) {
+                final card = mockPaymentCards[index];
+                return _buildPaymentCard(context, card);
+              },
+            ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          await Navigator.pushNamed(context, '/add-edit-payment');
+          setState(() {});
+        },
+        label: Text('Thêm Thẻ mới'),
+        icon: Icon(Icons.add),
+        backgroundColor: mcAccentColor,
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    );
+  }
+
+  Widget _buildPaymentCard(BuildContext context, PaymentCard card) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 15),
+      elevation: 3,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: card.isDefault ? BorderSide(color: mcAccentColor, width: 2) : BorderSide.none,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  card.bankName,
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: mcPrimaryColor),
+                ),
+                if (card.isDefault)
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: mcAccentColor, borderRadius: BorderRadius.circular(5)),
+                    child: Text('Mặc định', style: TextStyle(color: Colors.white, fontSize: 12)),
+                  ),
+              ],
+            ),
+            const Divider(height: 15),
+            Text('Số thẻ: ${card.cardNumber}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 5),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Chủ thẻ: ${card.cardHolder}', style: TextStyle(color: Colors.grey.shade700)),
+                Text('HSD: ${card.expiryDate}', style: TextStyle(color: Colors.grey.shade700)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () async {
+                    await Navigator.pushNamed(context, '/add-edit-payment', arguments: card);
+                    setState(() {});
+                  },
+                  child: Text('Sửa', style: TextStyle(color: mcPrimaryColor)),
+                ),
+                const SizedBox(width: 8),
+                if (!card.isDefault)
+                  TextButton(
+                    onPressed: () => _setDefaultCard(card),
+                    child: Text('Đặt Mặc định', style: TextStyle(color: mcAccentColor)),
+                  ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: () => _confirmDelete(card),
+                  child: Text('Xóa', style: TextStyle(color: Colors.red)),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _confirmDelete(PaymentCard card) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Xác nhận xóa'),
+        content: Text('Bạn có chắc chắn muốn xóa thẻ ${card.cardNumber} không?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('HỦY')),
+          TextButton(
+            onPressed: () {
+              _deleteCard(card);
+              Navigator.pop(context);
+            },
+            child: Text('XÓA', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- 6e. Thêm/Sửa Thẻ Thanh toán (AddEditPaymentCardScreen) ---
+class AddEditPaymentCardScreen extends StatefulWidget {
+  @override
+  _AddEditPaymentCardScreenState createState() => _AddEditPaymentCardScreenState();
+}
+
+class _AddEditPaymentCardScreenState extends State<AddEditPaymentCardScreen> {
+  final _formKey = GlobalKey<FormState>();
+  late PaymentCard _currentCard;
+  bool _isEditing = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final PaymentCard? cardToEdit = ModalRoute.of(context)!.settings.arguments as PaymentCard?;
+
+    if (cardToEdit != null) {
+      _currentCard = cardToEdit;
+      _isEditing = true;
+    } else {
+      _currentCard = PaymentCard(
+        id: 'P${DateTime.now().millisecondsSinceEpoch}',
+        cardHolder: _currentUserProfile!.fullName.toUpperCase(),
+        cardNumber: '',
+        expiryDate: '',
+        bankName: 'Vietcombank',
+        isDefault: mockPaymentCards.isEmpty,
+      );
+    }
+  }
+
+  void _saveCard() {
+    if (_formKey.currentState!.validate()) {
+      _formKey.currentState!.save();
+
+      if (_currentCard.isDefault) {
+        for (var card in mockPaymentCards) {
+          if (card.id != _currentCard.id) {
+            card.isDefault = false;
+          }
+        }
+      }
+
+      setState(() {
+        if (_isEditing) {
+          final index = mockPaymentCards.indexWhere((p) => p.id == _currentCard.id);
+          if (index != -1) {
+            mockPaymentCards[index] = _currentCard;
+          }
+          _showSnackBar(context, 'Cập nhật thẻ thành công!', color: mcAccentColor);
+        } else {
+          mockPaymentCards.add(_currentCard);
+          _showSnackBar(context, 'Thêm thẻ thành công!', color: mcAccentColor);
+        }
+      });
+
+      Navigator.pop(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(_isEditing ? 'Sửa Thẻ Thanh toán' : 'Thêm Thẻ mới')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildTextFormField('Số thẻ (ví dụ: **** **** **** 1234)', Icons.credit_card, _currentCard.cardNumber, (val) => _currentCard.cardNumber = val!, TextInputType.number),
+              _buildTextFormField('Tên chủ thẻ (IN HOA)', Icons.person_outline, _currentCard.cardHolder, (val) => _currentCard.cardHolder = val!.toUpperCase()),
+              _buildTextFormField('Ngày hết hạn (MM/YY)', Icons.date_range, _currentCard.expiryDate, (val) => _currentCard.expiryDate = val!, TextInputType.datetime),
+
+              _buildDropdownFormField('Ngân hàng', Icons.account_balance, _currentCard.bankName, ['Vietcombank', 'Techcombank', 'ACB', 'VPBank'], (val) => _currentCard.bankName = val!),
+
+              SwitchListTile(
+                title: Text('Đặt làm Thẻ Mặc định'),
+                value: _currentCard.isDefault,
+                onChanged: (bool value) {
+                  setState(() {
+                    _currentCard.isDefault = value;
+                  });
+                },
+                activeColor: mcAccentColor,
+                contentPadding: EdgeInsets.zero,
+              ),
+
+              const SizedBox(height: 30),
+              ElevatedButton(
+                onPressed: _saveCard,
+                child: Text(_isEditing ? 'LƯU THAY ĐỔI' : 'THÊM THẺ'),
+                style: ElevatedButton.styleFrom(minimumSize: Size(double.infinity, 50)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextFormField(String label, IconData icon, String initialValue, Function(String?) onSave, [TextInputType keyboardType = TextInputType.text]) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20.0),
+      child: TextFormField(
+        initialValue: initialValue,
+        keyboardType: keyboardType,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon),
+        ),
+        validator: (val) => val!.isEmpty ? 'Vui lòng nhập $label' : null,
+        onSaved: onSave,
+      ),
+    );
+  }
+
+  Widget _buildDropdownFormField(String label, IconData icon, String initialValue, List<String> options, Function(String?) onSave) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20.0),
+      child: DropdownButtonFormField<String>(
+        decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
+        value: initialValue,
+        items: options.map((String value) => DropdownMenuItem<String>(value: value, child: Text(value))).toList(),
+        onChanged: (String? newValue) => onSave(newValue),
+        validator: (val) => val == null || val.isEmpty ? 'Vui lòng chọn $label' : null,
+        onSaved: onSave,
+      ),
+    );
+  }
+}
+
+// --- 6f. Lịch sử Đơn hàng (OrderHistoryScreen) ---
+class OrderHistoryScreen extends StatefulWidget {
+  @override
+  _OrderHistoryScreenState createState() => _OrderHistoryScreenState();
+}
+
+class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
+  String? _expandedOrderId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Lịch sử Đơn hàng')),
+      body: mockOrderHistory.isEmpty
+          ? Center(child: Text('Chưa có đơn hàng nào.'))
+          : ListView.builder(
+              padding: const EdgeInsets.all(16.0),
+              itemCount: mockOrderHistory.length,
+              itemBuilder: (context, index) {
+                final order = mockOrderHistory[index];
+                return _buildOrderCard(context, order);
+              },
+            ),
+    );
+  }
+
+  Widget _buildOrderCard(BuildContext context, Order order) {
+    final isExpanded = order.orderId == _expandedOrderId;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 15),
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Column(
+        children: [
+          ListTile(
+            leading: Icon(Icons.receipt, color: mcPrimaryColor),
+            title: Text('Đơn hàng: ${order.orderId}', style: TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text('Ngày đặt: ${_formatDate(order.orderDate)}'),
+            trailing: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  order.status,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: order.status == 'Đã giao' ? mcAccentColor : Colors.orange.shade800,
+                  ),
+                ),
+                Text(_formatCurrency(order.totalAmount), style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+            onTap: () {
+              setState(() {
+                _expandedOrderId = isExpanded ? null : order.orderId;
+              });
+            },
+          ),
+          if (isExpanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Divider(),
+                  _buildDetailRow('Tổng tiền:', _formatCurrency(order.totalAmount), isBold: true, color: mcAccentColor),
+                  _buildDetailRow('Thanh toán:', order.paymentMethod),
+                  _buildDetailRow('Giao tới:', '${order.deliveryAddress.street}, ${order.deliveryAddress.district}'),
+                  const SizedBox(height: 10),
+                  Text('Chi tiết Sản phẩm:', style: TextStyle(fontWeight: FontWeight.w600)),
+                  ...order.items.map((item) => Padding(
+                    padding: const EdgeInsets.only(left: 10, top: 4),
+                    child: Text('- ${item.medicineName} (x${item.quantity}) - ${_formatCurrency(item.totalPrice)}'),
+                  )).toList(),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => _showSnackBar(context, 'Chức năng Mua lại'),
+                      child: Text('MUA LẠI', style: TextStyle(color: mcAccentColor, fontWeight: FontWeight.bold)),
+                    ),
+                  )
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value, {Color color = Colors.black, bool isBold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(label, style: TextStyle(fontWeight: isBold ? FontWeight.bold : FontWeight.normal, color: Colors.grey.shade700)),
+          ),
+          Expanded(
+            child: Text(value, style: TextStyle(fontWeight: isBold ? FontWeight.bold : FontWeight.w500, color: color)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+// =========================================================================
+//                             7. CHATBOT HỎI ĐÁP
+// =========================================================================
+
+class ChatBotScreen extends StatefulWidget {
+  @override
+  _ChatBotScreenState createState() => _ChatBotScreenState();
+}
+
+class _ChatBotScreenState extends State<ChatBotScreen> {
+  final List<ChatMessage> _messages = [
+    ChatMessage(text: 'Chào mừng! Tôi là MedBot, trợ lý sức khỏe của bạn. Bạn muốn hỏi gì về thuốc, bệnh, hoặc ứng dụng MEDCARE?', isUser: false),
+  ];
+  final TextEditingController _textController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _handleSubmitted(String text) {
+    if (text.trim().isEmpty) return;
+
+    _textController.clear();
+    setState(() {
+      _messages.add(ChatMessage(text: text, isUser: true));
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+
+    _sendBotResponse(text);
+  }
+
+  void _sendBotResponse(String userMessage) async {
+    await Future.delayed(Duration(seconds: 1));
+    String response;
+    final lowerCaseMsg = userMessage.toLowerCase();
+
+    if (lowerCaseMsg.contains('paracetamol') || lowerCaseMsg.contains('giảm đau')) {
+      response = 'Paracetamol là thuốc giảm đau và hạ sốt thông dụng. Liều dùng cho người lớn thường là 500mg-1000mg, mỗi 4-6 giờ. Tuyệt đối không dùng quá 4000mg/ngày. Nếu dùng quá liều có thể gây hại gan.';
+    } else if (lowerCaseMsg.contains('mấy giờ') || lowerCaseMsg.contains('hoạt động')) {
+      response = 'MEDCARE hoạt động 24/7 để bạn có thể đặt hàng bất cứ lúc nào. Bộ phận hỗ trợ khách hàng hoạt động từ 8h sáng đến 9h tối.';
+    } else if (lowerCaseMsg.contains('thực phẩm chức năng') || lowerCaseMsg.contains('vitamin')) {
+      response = 'Chúng tôi có nhiều loại thực phẩm chức năng như Vitamin C, Omega 3, Melatonin. Bạn có thể tìm kiếm trong mục "Thực Phẩm Chức Năng" trên Trang chủ.';
+    } else if (lowerCaseMsg.contains('đặt hàng') || lowerCaseMsg.contains('thanh toán')) {
+      response = 'Để đặt hàng, bạn chỉ cần thêm sản phẩm vào giỏ hàng và tiến hành thanh toán. Chúng tôi chấp nhận COD (thanh toán khi nhận hàng) và Thẻ Tín dụng/ATM.';
+    } else if (lowerCaseMsg.contains('xin chào') || lowerCaseMsg.contains('hi')) {
+      response = 'Chào bạn! Tôi có thể giúp gì cho sức khỏe của bạn hôm nay?';
+    } else {
+      response = 'Xin lỗi, tôi chưa hiểu rõ câu hỏi của bạn. Vui lòng hỏi lại hoặc chọn một trong các chủ đề sau: Thuốc giảm đau, Thực phẩm chức năng, Đặt hàng, Hỗ trợ.';
+    }
+
+    setState(() {
+      _messages.add(ChatMessage(text: response, isUser: false));
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('MedBot - Trợ lý Sức khỏe')),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(8.0),
+              reverse: false,
+              itemCount: _messages.length,
+              itemBuilder: (context, index) {
+                return _buildMessage(_messages[index]);
+              },
+            ),
+          ),
+          const Divider(height: 1.0),
+          Container(
+            decoration: BoxDecoration(color: Theme.of(context).cardColor),
+            child: _buildTextComposer(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessage(ChatMessage message) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 10.0),
+      child: Row(
+        mainAxisAlignment: message.isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          if (!message.isUser)
+            CircleAvatar(
+              backgroundColor: mcAccentColor,
+              child: Icon(Icons.medical_services_outlined, color: Colors.white, size: 20),
+            ),
+          const SizedBox(width: 8.0),
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.all(12.0),
+              decoration: BoxDecoration(
+                color: message.isUser ? mcPrimaryColor : Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(message.isUser ? 15 : 0),
+                  topRight: Radius.circular(15),
+                  bottomLeft: Radius.circular(15),
+                  bottomRight: Radius.circular(message.isUser ? 0 : 15),
+                ),
+                boxShadow: [
+                  BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 5),
+                ],
+                border: Border.all(color: message.isUser ? mcPrimaryColor : Colors.grey.shade200),
+              ),
+              child: Text(
+                message.text,
+                style: TextStyle(
+                  color: message.isUser ? Colors.white : Colors.black87,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8.0),
+          if (message.isUser)
+            CircleAvatar(
+              backgroundColor: Colors.grey.shade400,
+              child: Icon(Icons.person, color: Colors.white, size: 20),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTextComposer() {
+    return IconTheme(
+      data: IconThemeData(color: mcAccentColor),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 8.0),
+        child: Row(
+          children: [
+            Flexible(
+              child: TextField(
+                controller: _textController,
+                onSubmitted: _handleSubmitted,
+                decoration: InputDecoration.collapsed(hintText: 'Nhập câu hỏi của bạn...'),
+              ),
+            ),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 4.0),
+              child: IconButton(
+                icon: Icon(Icons.send),
+                onPressed: () => _handleSubmitted(_textController.text),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- MÀN HÌNH PLACEHOLDERS (Giữ nguyên) ---
+class PlaceholderScreen extends StatelessWidget {
+  final String title;
+  const PlaceholderScreen({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.construction, size: 80, color: Colors.orange.shade400),
+            const SizedBox(height: 20),
+            Text('Tính năng "$title" đang được xây dựng!', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 10),
+            Text('Cảm ơn bạn đã kiên nhẫn.', style: TextStyle(color: Colors.grey.shade600)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class FavoriteScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) => PlaceholderScreen(title: 'Danh sách Yêu thích');
+}
